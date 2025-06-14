@@ -149,3 +149,5 @@ server.log
 *.log
 
 article_plots/
+
+data/
