@@ -170,6 +170,19 @@ python -m pytest tests/ -v
 - Uses conversation history for context management
 - Needs custom JSON parsing logic
 
+## Data Source
+
+The WMS analysis tools in this project work with warehouse management data. The sample dataset used for testing and demonstration is available from:
+
+**Mendeley Data**: Javier Rubio-Herrero (2024), "Warehouse Management System Dataset", Mendeley Data, V1  
+DOI: https://doi.org/10.17632/pf2w725pw3.1  
+URL: https://data.mendeley.com/datasets/pf2w725pw3/1
+
+To download the dataset, run:
+```bash
+python scripts/download_data.py
+```
+
 ## Contributing
 
 1. Fork the repository

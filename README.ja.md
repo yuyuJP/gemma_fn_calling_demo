@@ -170,6 +170,19 @@ python -m pytest tests/ -v
 - コンテキスト管理に会話履歴を使用
 - カスタム JSON パースロジックが必要
 
+## データソース
+
+このプロジェクトの WMS 分析ツールは倉庫管理データを使用します。テストとデモンストレーションに使用するサンプルデータセットは以下から入手できます：
+
+**Mendeley Data**: Javier Rubio-Herrero (2024), "Warehouse Management System Dataset", Mendeley Data, V1  
+DOI: https://doi.org/10.17632/pf2w725pw3.1  
+URL: https://data.mendeley.com/datasets/pf2w725pw3/1
+
+データセットをダウンロードするには以下を実行してください：
+```bash
+python scripts/download_data.py
+```
+
 ## 貢献
 
 1. リポジトリをフォーク
