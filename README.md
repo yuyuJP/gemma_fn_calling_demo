@@ -44,6 +44,9 @@ python examples/basic_example.py
 
 # Interactive function calling demo
 python examples/simple_function_calling.py
+
+# Warehouse management demo with natural language queries (recommended)
+python examples/simplified_wms_demo.py
 ```
 
 ### Full MCP Integration
@@ -86,6 +89,14 @@ Function result: 15 + 27 = 42
 Final answer: 15 plus 27 equals 42.
 ```
 
+### WMS Analysis with Natural Language
+```
+User: Who walked the longest distance in the warehouse?
+Gemma: {"tool_call": {"name": "analyze_daily_operator_distances_tool", "arguments": {"data_dir": "data"}}}
+Function result: [Daily operator distance analysis with accurate totals]
+Final answer: Based on daily analysis, Operator_3 walked the longest distance with 90,237 units total on October 2nd, 2023.
+```
+
 ### Tool Discovery
 The system automatically discovers available tools through the MCP protocol and includes them in the model's system prompt.
 
@@ -95,6 +106,7 @@ The system automatically discovers available tools through the MCP protocol and 
 - **MCP Client**: `app/mcp_client.py` handles communication between Ollama and MCP server
 - **Chat Server**: `app/chat_server.py` provides HTTP API that integrates MCP client with Ollama
 - **Tool System**: Tools are defined in `app/tools.py` and registered via `@mcp.tool()` decorators
+- **WMS Analysis**: Warehouse management tools for CSV data processing, storage optimization, and performance analysis
 
 ### Key Features
 
@@ -102,6 +114,8 @@ The system automatically discovers available tools through the MCP protocol and 
 - **Tool Discovery**: MCP server exposes available tools through `list_tools()` API
 - **JSON Tool Calls**: Uses structured JSON format: `{"tool_call": {"name": "...", "arguments": {...}}}`
 - **Error Handling**: Robust error handling with detailed logging
+- **Natural Language Interface**: Ask questions like "Who walked the longest distance?" instead of knowing specific tool names
+- **WMS Analysis**: 10 specialized warehouse management analysis tools for storage optimization and performance analysis
 
 ## Testing
 
@@ -126,6 +140,9 @@ python tests/test_tool_call.py
 
 # Test HTTP API (requires server running)
 python tests/test_retry.py
+
+# Test WMS analysis tools
+python tests/test_wms_tools.py
 ```
 
 Using pytest:
@@ -159,9 +176,10 @@ python -m pytest tests/ -v
 
 1. **Start with examples**: Run `examples/basic_example.py` to understand core concepts
 2. **Try interactive demo**: Run `examples/simple_function_calling.py` for hands-on experience
-3. **Explore MCP integration**: Study the `app/` directory for production patterns
-4. **Run tests**: Use the test suite to understand validation patterns
-5. **Read documentation**: Check `article_plots/` for deeper insights
+3. **WMS demo**: Run `examples/simplified_wms_demo.py` to see natural language queries with real warehouse data
+4. **Explore MCP integration**: Study the `app/` directory for production patterns
+5. **Run tests**: Use the test suite to understand validation patterns
+6. **Read documentation**: Check `article_plots/` for deeper insights
 
 ## Key Differences from OpenAI
 

@@ -1,11 +1,16 @@
+#!/usr/bin/env python3
+"""
+Clean tools module with essential WMS functions and utilities.
+"""
+
 from datetime import datetime
-import random
 from zoneinfo import ZoneInfo, available_timezones
 import ollama
 import pandas as pd
 import numpy as np
 from typing import List, Optional, Dict, Any
 import os
+
 
 def _normalize_timezone_with_llm(user_input: str) -> str:
     """Use LLM to convert user timezone input to proper IANA timezone identifier."""
@@ -52,6 +57,7 @@ Respond with ONLY the IANA timezone identifier, nothing else."""
     except Exception:
         return "UTC"  # Fallback if LLM call fails
 
+
 def get_time(timezone: str = "UTC") -> str:
     """Return current time string for a specific timezone."""
     try:
@@ -72,45 +78,6 @@ def get_time(timezone: str = "UTC") -> str:
         utc_time = datetime.now(ZoneInfo("UTC"))
         return f"Error getting time for '{timezone}'. Current UTC time: {utc_time.strftime('%Y-%m-%d %H:%M:%S %Z')}"
 
-def random_joke() -> str:
-    """Return a canned dad joke."""
-    jokes = [
-        "I told my computer I needed a break, and it said ‘no problem — I’ll go to sleep.’",
-        "Why do programmers prefer dark mode? Because light attracts bugs.",
-    ]
-    return random.choice(jokes)
-
-# WMS Data Analysis Tools
-
-def load_storage_data(storage_type: str, data_dir: str = "data") -> Dict[str, Any]:
-    """Load storage data (class_based, dedicated, hybrid, or random)."""
-    try:
-        file_mapping = {
-            "class_based": "Class_Based_Storage.csv",
-            "dedicated": "Dedicated_Storage.csv", 
-            "hybrid": "Hybrid_Storage.csv",
-            "random": "Random_Storage.csv"
-        }
-        
-        if storage_type not in file_mapping:
-            return {"error": f"Invalid storage type. Must be one of: {list(file_mapping.keys())}"}
-        
-        file_path = os.path.join(data_dir, file_mapping[storage_type])
-        
-        if not os.path.exists(file_path):
-            return {"error": f"File not found: {file_path}"}
-            
-        df = pd.read_csv(file_path)
-        return {
-            "storage_type": storage_type,
-            "data_loaded": True,
-            "records": len(df),
-            "columns": list(df.columns),
-            "sample_data": df.head(3).to_dict('records') if len(df) > 0 else []
-        }
-        
-    except Exception as e:
-        return {"error": f"Failed to load {storage_type} storage data: {str(e)}"}
 
 def load_customer_orders(data_dir: str = "data", date_filter: Optional[str] = None) -> Dict[str, Any]:
     """Load customer orders with optional date filtering."""
@@ -120,7 +87,7 @@ def load_customer_orders(data_dir: str = "data", date_filter: Optional[str] = No
         if not os.path.exists(file_path):
             return {"error": f"File not found: {file_path}"}
             
-        df = pd.read_csv(file_path)
+        df = pd.read_csv(file_path, sep=';', encoding='utf-8-sig')
         
         if date_filter:
             try:
@@ -140,58 +107,12 @@ def load_customer_orders(data_dir: str = "data", date_filter: Optional[str] = No
     except Exception as e:
         return {"error": f"Failed to load customer orders: {str(e)}"}
 
-def load_picking_waves(data_dir: str = "data", wave_numbers: Optional[List[int]] = None) -> Dict[str, Any]:
-    """Load picking wave data for specified waves."""
-    try:
-        file_path = os.path.join(data_dir, "Picking_Wave.csv")
-        
-        if not os.path.exists(file_path):
-            return {"error": f"File not found: {file_path}"}
-            
-        df = pd.read_csv(file_path)
-        
-        if wave_numbers:
-            df = df[df['waveNumber'].isin(wave_numbers)]
-        
-        return {
-            "data_loaded": True,
-            "total_waves": df['waveNumber'].nunique() if 'waveNumber' in df.columns else 0,
-            "total_picks": len(df),
-            "columns": list(df.columns),
-            "sample_data": df.head(3).to_dict('records') if len(df) > 0 else []
-        }
-        
-    except Exception as e:
-        return {"error": f"Failed to load picking waves: {str(e)}"}
-
-def load_product_catalog(data_dir: str = "data") -> Dict[str, Any]:
-    """Load product reference data with ABC classifications."""
-    try:
-        file_path = os.path.join(data_dir, "Product.csv")
-        
-        if not os.path.exists(file_path):
-            return {"error": f"File not found: {file_path}"}
-            
-        df = pd.read_csv(file_path)
-        
-        abc_distribution = df['ABCCOD'].value_counts().to_dict() if 'ABCCOD' in df.columns else {}
-        
-        return {
-            "data_loaded": True,
-            "total_products": len(df),
-            "abc_distribution": abc_distribution,
-            "columns": list(df.columns),
-            "sample_data": df.head(3).to_dict('records') if len(df) > 0 else []
-        }
-        
-    except Exception as e:
-        return {"error": f"Failed to load product catalog: {str(e)}"}
 
 def load_spatial_data(data_dir: str = "data") -> Dict[str, Any]:
     """Load 3D warehouse coordinates and location mappings."""
     try:
         storage_file = os.path.join(data_dir, "Storage_Location.csv")
-        support_file = os.path.join(data_dir, "Support_Points.csv")
+        support_file = os.path.join(data_dir, "Support_Points_Navigation.csv")
         
         result = {"data_loaded": True}
         
@@ -208,7 +129,12 @@ def load_spatial_data(data_dir: str = "data") -> Dict[str, Any]:
             }
         
         if os.path.exists(support_file):
-            support_df = pd.read_csv(support_file)
+            # Support_Points has complex format, try to read it
+            try:
+                support_df = pd.read_csv(support_file, sep=';', encoding='utf-8-sig')
+            except:
+                # Fallback: create empty dataframe if file format is problematic
+                support_df = pd.DataFrame({"points_specified": [], "labels": []})
             result["support_points"] = {
                 "records": len(support_df),
                 "columns": list(support_df.columns),
@@ -223,79 +149,6 @@ def load_spatial_data(data_dir: str = "data") -> Dict[str, Any]:
     except Exception as e:
         return {"error": f"Failed to load spatial data: {str(e)}"}
 
-def parse_encoded_storage(location: str, encoded_columns: List[str]) -> Dict[str, Any]:
-    """Parse encoded product details from storage columns (product_code;quantity)."""
-    try:
-        products = {}
-        
-        for col_data in encoded_columns:
-            if col_data and isinstance(col_data, str) and ';' in col_data:
-                try:
-                    code, qty = col_data.split(';', 1)
-                    products[code.strip()] = int(qty.strip())
-                except (ValueError, IndexError):
-                    continue
-        
-        return {
-            "location": location,
-            "products": products,
-            "total_products": len(products),
-            "total_quantity": sum(products.values())
-        }
-        
-    except Exception as e:
-        return {"error": f"Failed to parse encoded storage: {str(e)}"}
-
-def calculate_storage_utilization(storage_type: str, data_dir: str = "data") -> Dict[str, Any]:
-    """Calculate utilization rates for different storage strategies."""
-    try:
-        storage_data_result = load_storage_data(storage_type, data_dir)
-        
-        if "error" in storage_data_result:
-            return storage_data_result
-        
-        file_mapping = {
-            "class_based": "Class_Based_Storage.csv",
-            "dedicated": "Dedicated_Storage.csv",
-            "hybrid": "Hybrid_Storage.csv", 
-            "random": "Random_Storage.csv"
-        }
-        
-        file_path = os.path.join(data_dir, file_mapping[storage_type])
-        df = pd.read_csv(file_path)
-        
-        total_locations = len(df)
-        occupied_locations = 0
-        total_products_stored = 0
-        
-        location_col = 'Location' if 'Location' in df.columns else 'originalLocation'
-        
-        for _, row in df.iterrows():
-            encoded_columns = []
-            for i in range(1, 19):
-                col_name = f'col_{i}'
-                if col_name in df.columns and pd.notna(row[col_name]):
-                    encoded_columns.append(str(row[col_name]))
-            
-            if encoded_columns:
-                parsed = parse_encoded_storage(row[location_col], encoded_columns)
-                if "error" not in parsed and parsed['products']:
-                    occupied_locations += 1
-                    total_products_stored += parsed['total_quantity']
-        
-        utilization_rate = occupied_locations / total_locations if total_locations > 0 else 0
-        
-        return {
-            "storage_type": storage_type,
-            "total_locations": total_locations,
-            "occupied_locations": occupied_locations,
-            "utilization_rate": round(utilization_rate, 3),
-            "total_products_stored": total_products_stored,
-            "avg_products_per_location": round(total_products_stored / occupied_locations, 2) if occupied_locations > 0 else 0
-        }
-        
-    except Exception as e:
-        return {"error": f"Failed to calculate storage utilization: {str(e)}"}
 
 def analyze_picking_distances(wave_number: int, data_dir: str = "data") -> Dict[str, Any]:
     """Calculate total picking distances for a wave using 3D coordinates."""
@@ -308,8 +161,8 @@ def analyze_picking_distances(wave_number: int, data_dir: str = "data") -> Dict[
         if not os.path.exists(spatial_file):
             return {"error": f"Spatial data file not found: {spatial_file}"}
         
-        waves_df = pd.read_csv(waves_file)
-        spatial_df = pd.read_csv(spatial_file)
+        waves_df = pd.read_csv(waves_file, sep=';', encoding='utf-8-sig')
+        spatial_df = pd.read_csv(spatial_file)  # Storage_Location.csv uses comma delimiter
         
         wave_data = waves_df[waves_df['waveNumber'] == wave_number]
         
@@ -362,8 +215,9 @@ def analyze_picking_distances(wave_number: int, data_dir: str = "data") -> Dict[
     except Exception as e:
         return {"error": f"Failed to analyze picking distances: {str(e)}"}
 
-def analyze_operator_performance(data_dir: str = "data") -> Dict[str, Any]:
-    """Comprehensive operator performance analysis."""
+
+def analyze_daily_operator_distances(data_dir: str = "data", target_date: Optional[str] = None) -> Dict[str, Any]:
+    """Calculate total walking distances for operators on a specific day."""
     try:
         orders_file = os.path.join(data_dir, "Customer_Order.csv")
         waves_file = os.path.join(data_dir, "Picking_Wave.csv")
@@ -373,55 +227,77 @@ def analyze_operator_performance(data_dir: str = "data") -> Dict[str, Any]:
         if not os.path.exists(waves_file):
             return {"error": f"Waves file not found: {waves_file}"}
         
-        orders_df = pd.read_csv(orders_file)
-        waves_df = pd.read_csv(waves_file)
+        orders_df = pd.read_csv(orders_file, sep=';', encoding='utf-8-sig')
+        waves_df = pd.read_csv(waves_file, sep=';', encoding='utf-8-sig')
         
-        if 'operator' not in orders_df.columns or 'operator' not in waves_df.columns:
-            return {"error": "Operator column not found in data files"}
+        # Parse dates
+        orders_df['creationDate'] = pd.to_datetime(orders_df['creationDate'], format='%d/%m/%Y %H:%M')
+        orders_df['date'] = orders_df['creationDate'].dt.date
+        
+        # If no target date specified, use the most recent date with significant activity
+        if target_date is None:
+            date_counts = orders_df['date'].value_counts()
+            target_date = str(date_counts.index[0])  # Most active date
+        
+        # Filter to target date
+        target_date_parsed = pd.to_datetime(target_date).date()
+        daily_orders = orders_df[orders_df['date'] == target_date_parsed]
+        
+        if daily_orders.empty:
+            return {"error": f"No orders found for date {target_date}"}
+        
+        # Get waves for this date
+        daily_wave_numbers = daily_orders['waveNumber'].unique()
+        daily_waves = waves_df[waves_df['waveNumber'].isin(daily_wave_numbers)]
         
         operator_stats = []
         
-        for operator in orders_df['operator'].unique():
+        for operator in daily_orders['operator'].unique():
             if pd.isna(operator):
                 continue
-                
-            op_orders = orders_df[orders_df['operator'] == operator]
-            op_waves = waves_df[waves_df['operator'] == operator]
             
-            total_items = op_orders['quantity (units)'].sum() if 'quantity (units)' in op_orders.columns else 0
-            total_orders = len(op_orders)
-            avg_wave_size = op_waves['quantityToPick (units)'].mean() if 'quantityToPick (units)' in op_waves.columns and len(op_waves) > 0 else 0
+            op_orders = daily_orders[daily_orders['operator'] == operator]
+            op_waves = daily_waves[daily_waves['operator'] == operator]
             
-            distances = []
+            total_distance = 0
+            total_picks = 0
+            processed_waves = 0
+            
             for wave_num in op_waves['waveNumber'].unique():
                 if pd.notna(wave_num):
                     dist_result = analyze_picking_distances(int(wave_num), data_dir)
-                    if "error" not in dist_result and dist_result['avg_distance_per_pick'] > 0:
-                        distances.append(dist_result['avg_distance_per_pick'])
+                    if "error" not in dist_result and 'total_picking_distance' in dist_result:
+                        total_distance += dist_result['total_picking_distance']
+                        total_picks += dist_result['locations_count']
+                        processed_waves += 1
             
-            avg_distance = np.mean(distances) if distances else 0
-            efficiency_score = (total_items / avg_distance) if avg_distance > 0 else total_items
+            total_items = op_orders['quantity (units)'].sum()
             
             operator_stats.append({
                 "operator": str(operator),
-                "total_items_picked": int(total_items),
-                "total_orders": total_orders,
-                "total_waves": len(op_waves),
-                "avg_wave_size": round(float(avg_wave_size), 2),
-                "avg_picking_distance": round(avg_distance, 2),
-                "efficiency_score": round(efficiency_score, 2)
+                "total_walking_distance": total_distance,
+                "total_picks": total_picks,
+                "total_items": int(total_items),
+                "total_orders": len(op_orders),
+                "processed_waves": processed_waves,
+                "avg_distance_per_pick": round(total_distance / total_picks, 2) if total_picks > 0 else 0
             })
         
-        operator_stats.sort(key=lambda x: x['efficiency_score'], reverse=True)
+        # Sort by total walking distance
+        operator_stats.sort(key=lambda x: x['total_walking_distance'], reverse=True)
         
         return {
+            "analysis_date": target_date,
             "analysis_complete": True,
             "total_operators": len(operator_stats),
-            "operator_performance": operator_stats[:10]  # Top 10 performers
+            "total_orders_analyzed": len(daily_orders),
+            "total_waves_analyzed": len(daily_wave_numbers),
+            "operator_distances": operator_stats
         }
         
     except Exception as e:
-        return {"error": f"Failed to analyze operator performance: {str(e)}"}
+        return {"error": f"Failed to analyze daily operator distances: {str(e)}"}
+
 
 def analyze_product_demand(data_dir: str = "data") -> Dict[str, Any]:
     """Analyze product demand based on customer orders."""
@@ -431,7 +307,7 @@ def analyze_product_demand(data_dir: str = "data") -> Dict[str, Any]:
         if not os.path.exists(orders_file):
             return {"error": f"Orders file not found: {orders_file}"}
         
-        orders_df = pd.read_csv(orders_file)
+        orders_df = pd.read_csv(orders_file, sep=';', encoding='utf-8-sig')
         
         if 'Reference' not in orders_df.columns or 'quantity (units)' not in orders_df.columns:
             return {"error": "Required columns (Reference, quantity) not found in orders data"}

@@ -41,6 +41,25 @@ python examples/simple_function_calling.py
 - Conversation history management
 - Error recovery strategies
 
+### 3. `simplified_wms_demo.py` - Warehouse Management Demo
+**Real-world application example**
+
+A warehouse management system demo showing:
+- Natural language queries ("Who walked the longest distance?")
+- MCP integration with simplified tool set (5 tools)
+- Real data analysis and insights
+- Optimal tool count for natural language interaction
+
+```bash
+python examples/simplified_wms_demo.py
+```
+
+**Key learning points:**
+- MCP client integration
+- Natural language tool selection
+- Real-world data processing
+- Tool design for usability
+
 ## What You'll Learn
 
 ### Core Concepts

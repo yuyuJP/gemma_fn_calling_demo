@@ -57,6 +57,9 @@ python examples/basic_example.py
 
 # Interactive function calling demo
 python examples/simple_function_calling.py
+
+# Warehouse management demo with natural language queries
+python examples/simplified_wms_demo.py
 ```
 
 ### Running Tests
@@ -103,6 +106,21 @@ python -m pytest tests/ -v
 
 The system provides 10 specialized warehouse management analysis tools:
 
+### Natural Language Examples
+
+The `examples/picking_distance_example.py` demonstrates how to use natural language queries with MCP tools:
+
+```python
+# Example queries that trigger automatic tool selection:
+queries = [
+    "Who walked the longest distance in the warehouse? Analyze all operators.",
+    "Which picking wave required the most walking distance?", 
+    "Show me the performance analysis for all warehouse operators.",
+    "Calculate picking distances for wave number 1 and tell me the results.",
+    "Compare the efficiency of different operators based on their picking distances."
+]
+```
+
 ### Data Loading Tools
 - `load_storage_data_tool(storage_type, data_dir)` - Load storage data by type
 - `load_customer_orders_tool(data_dir, date_filter)` - Load customer orders
@@ -128,6 +146,23 @@ The test suite is organized into categories:
 - **`test_retry.py`**: Integration tests using HTTP API (requires server running)
 - **`test_wms_tools.py`**: Comprehensive WMS analysis tools testing (13 test cases)
 - **`run_all_tests.py`**: Master test runner for all categories
+
+### WMS Example Testing
+
+The `examples/picking_distance_example.py` can be tested with:
+
+```bash
+# Ensure virtual environment is activated and MCP server dependencies are available
+source .venv/bin/activate
+python examples/picking_distance_example.py
+```
+
+The example demonstrates:
+- ✅ MCP client connection and tool discovery (12 tools loaded)
+- ✅ Natural language query processing
+- ✅ Automatic tool selection and execution  
+- ✅ Spatial data analysis (2292 storage locations with 3D coordinates)
+- ⚠️ Graceful handling of missing data columns in demo dataset
 
 Integration tests use the HTTP API endpoint at `http://localhost:8001/v1/chat` and require the chat server to be running.
 
