@@ -36,8 +36,8 @@ async def test_natural_questions():
         
         # Natural questions
         questions = [
-            "Who walked the longest distance in the warehouse?",
-            "Which products are most popular?",
+            "Who walked the longest distance in the warehouse on September 1st, 2023?",
+            "Which products were most popular in September 2023?",
             "Show me the warehouse layout.",
             "What time is it in Tokyo?",
         ]
@@ -69,7 +69,6 @@ async def test_natural_questions():
 async def main():
     """Main function."""
     print("🎯 Testing Natural Language with Simplified Tool Set")
-    print("Hypothesis: Fewer, better-named tools = better natural language interaction")
     print()
     
     await test_natural_questions()

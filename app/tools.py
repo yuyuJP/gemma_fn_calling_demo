@@ -92,9 +92,24 @@ def load_customer_orders(data_dir: str = "data", date_filter: Optional[str] = No
         if date_filter:
             try:
                 df['creationDate'] = pd.to_datetime(df['creationDate'])
-                df = df[df['creationDate'].dt.date == pd.to_datetime(date_filter).date()]
+                # Parse date_filter with multiple format attempts
+                filter_date = None
+                date_formats = ['%Y-%m-%d', '%m/%d/%Y', '%d/%m/%Y', '%Y-%m-%d %H:%M:%S']
+                
+                for fmt in date_formats:
+                    try:
+                        filter_date = pd.to_datetime(date_filter, format=fmt).date()
+                        break
+                    except:
+                        continue
+                
+                if filter_date is None:
+                    # Try pandas' flexible parsing as fallback
+                    filter_date = pd.to_datetime(date_filter).date()
+                
+                df = df[df['creationDate'].dt.date == filter_date]
             except Exception as e:
-                return {"error": f"Date filtering failed: {str(e)}"}
+                return {"error": f"Date filtering failed: {str(e)}. Please use format YYYY-MM-DD or MM/DD/YYYY"}
         
         return {
             "data_loaded": True,
@@ -239,9 +254,26 @@ def analyze_daily_operator_distances(data_dir: str = "data", target_date: Option
             date_counts = orders_df['date'].value_counts()
             target_date = str(date_counts.index[0])  # Most active date
         
-        # Filter to target date
-        target_date_parsed = pd.to_datetime(target_date).date()
-        daily_orders = orders_df[orders_df['date'] == target_date_parsed]
+        # Filter to target date with robust parsing
+        try:
+            # Parse target_date with multiple format attempts
+            target_date_parsed = None
+            date_formats = ['%Y-%m-%d', '%m/%d/%Y', '%d/%m/%Y', '%Y-%m-%d %H:%M:%S']
+            
+            for fmt in date_formats:
+                try:
+                    target_date_parsed = pd.to_datetime(target_date, format=fmt).date()
+                    break
+                except:
+                    continue
+            
+            if target_date_parsed is None:
+                # Try pandas' flexible parsing as fallback
+                target_date_parsed = pd.to_datetime(target_date).date()
+            
+            daily_orders = orders_df[orders_df['date'] == target_date_parsed]
+        except Exception as e:
+            return {"error": f"Date parsing failed for '{target_date}': {str(e)}. Please use format YYYY-MM-DD or MM/DD/YYYY"}
         
         if daily_orders.empty:
             return {"error": f"No orders found for date {target_date}"}
@@ -299,8 +331,8 @@ def analyze_daily_operator_distances(data_dir: str = "data", target_date: Option
         return {"error": f"Failed to analyze daily operator distances: {str(e)}"}
 
 
-def analyze_product_demand(data_dir: str = "data") -> Dict[str, Any]:
-    """Analyze product demand based on customer orders."""
+def analyze_product_demand(data_dir: str = "data", start_date: Optional[str] = None, end_date: Optional[str] = None) -> Dict[str, Any]:
+    """Analyze product demand based on customer orders over a date range."""
     try:
         orders_file = os.path.join(data_dir, "Customer_Order.csv")
         
@@ -312,6 +344,44 @@ def analyze_product_demand(data_dir: str = "data") -> Dict[str, Any]:
         if 'Reference' not in orders_df.columns or 'quantity (units)' not in orders_df.columns:
             return {"error": "Required columns (Reference, quantity) not found in orders data"}
         
+        # Parse dates for filtering
+        if 'creationDate' in orders_df.columns:
+            orders_df['creationDate'] = pd.to_datetime(orders_df['creationDate'], format='%d/%m/%Y %H:%M')
+            orders_df['date'] = orders_df['creationDate'].dt.date
+            
+            # Apply date filtering if specified
+            if start_date or end_date:
+                try:
+                    # Parse dates with multiple format attempts
+                    def parse_date(date_str):
+                        if date_str is None:
+                            return None
+                        date_formats = ['%Y-%m-%d', '%m/%d/%Y', '%d/%m/%Y', '%Y-%m-%d %H:%M:%S']
+                        for fmt in date_formats:
+                            try:
+                                return pd.to_datetime(date_str, format=fmt).date()
+                            except:
+                                continue
+                        # Try pandas' flexible parsing as fallback
+                        return pd.to_datetime(date_str).date()
+                    
+                    start_parsed = parse_date(start_date) if start_date else orders_df['date'].min()
+                    end_parsed = parse_date(end_date) if end_date else orders_df['date'].max()
+                    
+                    # If only one date provided, use it as both start and end
+                    if start_date and not end_date:
+                        end_parsed = start_parsed
+                    elif end_date and not start_date:
+                        start_parsed = end_parsed
+                    
+                    orders_df = orders_df[(orders_df['date'] >= start_parsed) & (orders_df['date'] <= end_parsed)]
+                    
+                    if orders_df.empty:
+                        return {"error": f"No orders found in date range {start_parsed} to {end_parsed}"}
+                        
+                except Exception as e:
+                    return {"error": f"Date parsing failed: {str(e)}. Please use format YYYY-MM-DD or MM/DD/YYYY"}
+        
         demand_analysis = orders_df.groupby('Reference')['quantity (units)'].agg([
             'sum', 'count', 'mean'
         ]).round(2)
@@ -321,11 +391,21 @@ def analyze_product_demand(data_dir: str = "data") -> Dict[str, Any]:
         
         top_products = demand_analysis.head(10).reset_index().to_dict('records')
         
+        # Add date range info to result
+        date_info = {}
+        if start_date or end_date:
+            date_info["date_range"] = {
+                "start_date": str(start_parsed) if 'start_parsed' in locals() else None,
+                "end_date": str(end_parsed) if 'end_parsed' in locals() else None,
+                "total_orders_in_range": len(orders_df)
+            }
+        
         return {
             "analysis_complete": True,
             "total_products": len(demand_analysis),
             "top_10_products_by_demand": top_products,
-            "total_demand_across_all_products": int(demand_analysis['total_demand'].sum())
+            "total_demand_across_all_products": int(demand_analysis['total_demand'].sum()),
+            **date_info
         }
         
     except Exception as e:

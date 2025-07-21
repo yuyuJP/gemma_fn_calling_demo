@@ -1,2 +1,3 @@
-MODEL_NAME  = "gemma3:12b"
-MAX_LOOPS   = 3          # hard stop to avoid infinite retries
+MODEL_NAME      = "gemma3:12b"
+MAX_LOOPS       = 3          # hard stop to avoid infinite retries
+DEFAULT_TIMEZONE = "Asia/Tokyo"  # configurable default timezone
