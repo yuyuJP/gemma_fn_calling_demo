@@ -11,6 +11,7 @@ import os
 import sys
 import zipfile
 import urllib.request
+import shutil
 from pathlib import Path
 
 
@@ -67,14 +68,42 @@ def download_dataset():
         else:
             print("No items with spaces found")
         
-        # List extracted files
-        print(f"\nExtracted files:")
+        # Move CSV files from subdirectory to data root
+        print(f"\nMoving CSV files to data root directory...")
+        moved_files = []
+        
+        # Find the extracted subdirectory (should be the dataset folder)
+        subdirs = [p for p in data_dir.iterdir() if p.is_dir()]
+        if subdirs:
+            source_dir = subdirs[0]  # Take the first (and likely only) subdirectory
+            print(f"Found extracted directory: {source_dir.name}")
+            
+            # Move all CSV files from subdirectory to data root
+            csv_files = list(source_dir.glob("*.csv"))
+            for csv_file in csv_files:
+                target_path = data_dir / csv_file.name
+                if target_path.exists():
+                    print(f"  Skipping {csv_file.name} (already exists)")
+                else:
+                    shutil.move(str(csv_file), str(target_path))
+                    moved_files.append(csv_file.name)
+                    print(f"  Moved: {csv_file.name}")
+            
+            if moved_files:
+                print(f"Moved {len(moved_files)} CSV files to data root directory")
+            else:
+                print("No CSV files found to move")
+        
+        # List final files in data directory
+        print(f"\nFinal files in data directory:")
         for file_path in sorted(data_dir.glob("*")):
             if file_path.is_file():
                 size_mb = file_path.stat().st_size / (1024 * 1024)
-                print(f"  {file_path.name} ({size_mb:.2f} MB)")
+                file_type = "CSV" if file_path.suffix.lower() == ".csv" else "Other"
+                print(f"  {file_path.name} ({size_mb:.2f} MB) [{file_type}]")
         
         print(f"\nDataset successfully downloaded and extracted to: {data_dir}")
+        print(f"CSV files are now available in the data root directory.")
         print(f"You can now use the WMS analysis tools with this data.")
         
     except Exception as e:
