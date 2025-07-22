@@ -410,3 +410,264 @@ def analyze_product_demand(data_dir: str = "data", start_date: Optional[str] = N
         
     except Exception as e:
         return {"error": f"Failed to analyze product demand: {str(e)}"}
+
+
+def analyze_sales_trends_tool(data_dir: str = "data", date_start: Optional[str] = None, 
+                             date_end: Optional[str] = None, granularity: str = "daily", 
+                             metric: str = "quantity") -> Dict[str, Any]:
+    """
+    Analyze sales trends over time with temporal patterns and growth analysis.
+    
+    Args:
+        data_dir: Directory containing CSV files (default: "data")
+        date_start: Start date for analysis (YYYY-MM-DD format, optional)
+        date_end: End date for analysis (YYYY-MM-DD format, optional)
+        granularity: Time aggregation level ("daily", "weekly", "monthly")
+        metric: Analysis metric ("quantity", "orders", "unique_products")
+    
+    Returns:
+        Dictionary with trend analysis results including temporal patterns and growth rates
+    """
+    try:
+        csv_file = os.path.join(data_dir, "Customer_Order.csv")
+        if not os.path.exists(csv_file):
+            return {"error": f"Customer_Order.csv not found in {data_dir}"}
+        
+        # Load customer orders data
+        orders_df = pd.read_csv(csv_file, sep=';', encoding='utf-8-sig')
+        
+        # Parse creation date
+        orders_df['creationDate'] = pd.to_datetime(orders_df['creationDate'], format='%d/%m/%Y %H:%M')
+        orders_df['date'] = orders_df['creationDate'].dt.date
+        
+        # Apply date filtering if specified
+        if date_start or date_end:
+            def parse_date(date_str):
+                if date_str is None:
+                    return None
+                date_formats = ['%Y-%m-%d', '%m/%d/%Y', '%d/%m/%Y']
+                for fmt in date_formats:
+                    try:
+                        return pd.to_datetime(date_str, format=fmt).date()
+                    except:
+                        continue
+                return pd.to_datetime(date_str).date()
+            
+            start_parsed = parse_date(date_start) if date_start else orders_df['date'].min()
+            end_parsed = parse_date(date_end) if date_end else orders_df['date'].max()
+            
+            orders_df = orders_df[(orders_df['date'] >= start_parsed) & (orders_df['date'] <= end_parsed)]
+            
+            if orders_df.empty:
+                return {"error": f"No orders found in date range {start_parsed} to {end_parsed}"}
+        
+        # Set up time grouping based on granularity
+        if granularity == "daily":
+            orders_df['period'] = orders_df['creationDate'].dt.date
+        elif granularity == "weekly":
+            orders_df['period'] = orders_df['creationDate'].dt.to_period('W').astype(str)
+        elif granularity == "monthly":
+            orders_df['period'] = orders_df['creationDate'].dt.to_period('M').astype(str)
+        else:
+            return {"error": "Granularity must be 'daily', 'weekly', or 'monthly'"}
+        
+        # Calculate metrics based on selected metric type
+        if metric == "quantity":
+            trend_data = orders_df.groupby('period')['quantity (units)'].sum().reset_index()
+            metric_name = "total_quantity"
+        elif metric == "orders":
+            trend_data = orders_df.groupby('period')['orderNumber'].nunique().reset_index()
+            metric_name = "total_orders"
+        elif metric == "unique_products":
+            trend_data = orders_df.groupby('period')['Reference'].nunique().reset_index()
+            metric_name = "unique_products"
+        else:
+            return {"error": "Metric must be 'quantity', 'orders', or 'unique_products'"}
+        
+        trend_data.columns = ['period', metric_name]
+        trend_data = trend_data.sort_values('period')
+        
+        # Calculate growth rates
+        trend_data['growth_rate'] = trend_data[metric_name].pct_change() * 100
+        trend_data['growth_rate'] = trend_data['growth_rate'].round(2)
+        
+        # Calculate summary statistics
+        total_value = trend_data[metric_name].sum()
+        avg_value = trend_data[metric_name].mean()
+        max_period = trend_data.loc[trend_data[metric_name].idxmax(), 'period']
+        min_period = trend_data.loc[trend_data[metric_name].idxmin(), 'period']
+        
+        # Identify trends
+        overall_trend = "stable"
+        if len(trend_data) >= 2:
+            first_half = trend_data[metric_name].iloc[:len(trend_data)//2].mean()
+            second_half = trend_data[metric_name].iloc[len(trend_data)//2:].mean()
+            if second_half > first_half * 1.1:
+                overall_trend = "increasing"
+            elif second_half < first_half * 0.9:
+                overall_trend = "decreasing"
+        
+        # Convert trend data to records for JSON serialization
+        trend_records = trend_data.to_dict('records')
+        
+        return {
+            "analysis_complete": True,
+            "analysis_parameters": {
+                "granularity": granularity,
+                "metric": metric,
+                "date_range": f"{orders_df['date'].min()} to {orders_df['date'].max()}",
+                "total_periods": len(trend_data)
+            },
+            "summary_statistics": {
+                f"total_{metric}": int(total_value),
+                f"average_per_period": round(avg_value, 2),
+                "peak_period": str(max_period),
+                "lowest_period": str(min_period),
+                "overall_trend": overall_trend
+            },
+            "trend_data": trend_records,
+            "insights": [
+                f"Analysis covers {len(trend_data)} {granularity} periods",
+                f"Peak {metric} occurred in {max_period}",
+                f"Overall trend is {overall_trend}",
+                f"Average growth rate: {trend_data['growth_rate'].mean():.2f}%" if len(trend_data) > 1 else "Insufficient data for growth rate"
+            ]
+        }
+        
+    except Exception as e:
+        return {"error": f"Failed to analyze sales trends: {str(e)}"}
+
+
+def analyze_customer_behavior_tool(data_dir: str = "data", date_start: Optional[str] = None,
+                                 date_end: Optional[str] = None, customer_segment: str = "all",
+                                 min_orders: int = 1) -> Dict[str, Any]:
+    """
+    Analyze customer purchasing patterns and loyalty behavior.
+    
+    Args:
+        data_dir: Directory containing CSV files (default: "data")
+        date_start: Start date for analysis (YYYY-MM-DD format, optional)
+        date_end: End date for analysis (YYYY-MM-DD format, optional)
+        customer_segment: Customer segment to analyze ("all", "top_customers", "new_customers")
+        min_orders: Minimum orders threshold for active customers (default: 1)
+    
+    Returns:
+        Dictionary with customer behavior analysis including segmentation and loyalty metrics
+    """
+    try:
+        csv_file = os.path.join(data_dir, "Customer_Order.csv")
+        if not os.path.exists(csv_file):
+            return {"error": f"Customer_Order.csv not found in {data_dir}"}
+        
+        # Load customer orders data
+        orders_df = pd.read_csv(csv_file, sep=';', encoding='utf-8-sig')
+        
+        # Parse creation date
+        orders_df['creationDate'] = pd.to_datetime(orders_df['creationDate'], format='%d/%m/%Y %H:%M')
+        orders_df['date'] = orders_df['creationDate'].dt.date
+        
+        # Apply date filtering if specified
+        if date_start or date_end:
+            def parse_date(date_str):
+                if date_str is None:
+                    return None
+                date_formats = ['%Y-%m-%d', '%m/%d/%Y', '%d/%m/%Y']
+                for fmt in date_formats:
+                    try:
+                        return pd.to_datetime(date_str, format=fmt).date()
+                    except:
+                        continue
+                return pd.to_datetime(date_str).date()
+            
+            start_parsed = parse_date(date_start) if date_start else orders_df['date'].min()
+            end_parsed = parse_date(date_end) if date_end else orders_df['date'].max()
+            
+            orders_df = orders_df[(orders_df['date'] >= start_parsed) & (orders_df['date'] <= end_parsed)]
+            
+            if orders_df.empty:
+                return {"error": f"No orders found in date range {start_parsed} to {end_parsed}"}
+        
+        # Customer-level analysis
+        customer_stats = orders_df.groupby('codCustomer').agg({
+            'orderNumber': 'nunique',
+            'quantity (units)': 'sum',
+            'Reference': 'nunique',
+            'creationDate': ['min', 'max']
+        }).round(2)
+        
+        customer_stats.columns = ['total_orders', 'total_quantity', 'unique_products', 'first_order_date', 'last_order_date']
+        
+        # Calculate customer metrics
+        customer_stats['avg_quantity_per_order'] = (customer_stats['total_quantity'] / customer_stats['total_orders']).round(2)
+        customer_stats['days_active'] = (customer_stats['last_order_date'] - customer_stats['first_order_date']).dt.days
+        customer_stats['order_frequency'] = (customer_stats['total_orders'] / (customer_stats['days_active'] + 1)).round(4)
+        
+        # Filter by minimum orders threshold
+        active_customers = customer_stats[customer_stats['total_orders'] >= min_orders]
+        
+        # Customer segmentation
+        if customer_segment == "top_customers":
+            # Top 10% by total quantity
+            threshold = active_customers['total_quantity'].quantile(0.9)
+            segment_customers = active_customers[active_customers['total_quantity'] >= threshold]
+        elif customer_segment == "new_customers":
+            # Customers with only 1-2 orders
+            segment_customers = active_customers[active_customers['total_orders'] <= 2]
+        else:
+            segment_customers = active_customers
+        
+        # Calculate segment statistics
+        total_customers = len(segment_customers)
+        avg_orders_per_customer = segment_customers['total_orders'].mean()
+        avg_quantity_per_customer = segment_customers['total_quantity'].mean()
+        
+        # Top customers by different metrics
+        top_by_orders = segment_customers.nlargest(10, 'total_orders')[['total_orders', 'total_quantity']].reset_index()
+        top_by_quantity = segment_customers.nlargest(10, 'total_quantity')[['total_orders', 'total_quantity']].reset_index()
+        
+        # Order size distribution
+        order_sizes = orders_df.groupby('orderNumber')['quantity (units)'].sum()
+        size_distribution = {
+            "single_item_orders": len(order_sizes[order_sizes == 1]),
+            "small_orders_2_5": len(order_sizes[(order_sizes >= 2) & (order_sizes <= 5)]),
+            "medium_orders_6_10": len(order_sizes[(order_sizes >= 6) & (order_sizes <= 10)]),
+            "large_orders_10_plus": len(order_sizes[order_sizes > 10])
+        }
+        
+        # Purchase frequency analysis
+        frequency_segments = {
+            "single_purchase": len(segment_customers[segment_customers['total_orders'] == 1]),
+            "occasional_2_5": len(segment_customers[(segment_customers['total_orders'] >= 2) & (segment_customers['total_orders'] <= 5)]),
+            "regular_6_10": len(segment_customers[(segment_customers['total_orders'] >= 6) & (segment_customers['total_orders'] <= 10)]),
+            "frequent_10_plus": len(segment_customers[segment_customers['total_orders'] > 10])
+        }
+        
+        return {
+            "analysis_complete": True,
+            "analysis_parameters": {
+                "customer_segment": customer_segment,
+                "min_orders_threshold": min_orders,
+                "date_range": f"{orders_df['date'].min()} to {orders_df['date'].max()}",
+                "total_customers_analyzed": total_customers
+            },
+            "customer_summary": {
+                "total_active_customers": total_customers,
+                "avg_orders_per_customer": round(avg_orders_per_customer, 2),
+                "avg_quantity_per_customer": round(avg_quantity_per_customer, 2),
+                "avg_order_frequency": round(segment_customers['order_frequency'].mean(), 4)
+            },
+            "top_customers_by_orders": top_by_orders.to_dict('records'),
+            "top_customers_by_quantity": top_by_quantity.to_dict('records'),
+            "order_size_distribution": size_distribution,
+            "purchase_frequency_segments": frequency_segments,
+            "insights": [
+                f"Analyzed {total_customers} customers in '{customer_segment}' segment",
+                f"Average customer places {avg_orders_per_customer:.1f} orders",
+                f"Most loyal customer has {segment_customers['total_orders'].max()} orders",
+                f"{frequency_segments['single_purchase']} customers ({frequency_segments['single_purchase']/total_customers*100:.1f}%) made only one purchase",
+                f"Top customer ordered {segment_customers['total_quantity'].max()} total units"
+            ]
+        }
+        
+    except Exception as e:
+        return {"error": f"Failed to analyze customer behavior: {str(e)}"}
