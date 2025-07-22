@@ -671,3 +671,204 @@ def analyze_customer_behavior_tool(data_dir: str = "data", date_start: Optional[
         
     except Exception as e:
         return {"error": f"Failed to analyze customer behavior: {str(e)}"}
+
+
+def analyze_product_sales_trends_tool(data_dir: str = "data", date_start: Optional[str] = None,
+                                    date_end: Optional[str] = None, product_references: Optional[List[str]] = None,
+                                    include_sizes: bool = True) -> Dict[str, Any]:
+    """
+    Analyze product-specific sales performance and trends over time.
+    
+    Args:
+        data_dir: Directory containing CSV files (default: "data")
+        date_start: Start date for analysis (YYYY-MM-DD format, optional)
+        date_end: End date for analysis (YYYY-MM-DD format, optional)
+        product_references: Specific product references to analyze (optional, analyzes all if None)
+        include_sizes: Include size-based analysis in results (default: True)
+    
+    Returns:
+        Dictionary with product sales trends including performance ranking and lifecycle analysis
+    """
+    try:
+        csv_file = os.path.join(data_dir, "Customer_Order.csv")
+        if not os.path.exists(csv_file):
+            return {"error": f"Customer_Order.csv not found in {data_dir}"}
+        
+        # Load customer orders data
+        orders_df = pd.read_csv(csv_file, sep=';', encoding='utf-8-sig')
+        
+        # Parse creation date
+        orders_df['creationDate'] = pd.to_datetime(orders_df['creationDate'], format='%d/%m/%Y %H:%M')
+        orders_df['date'] = orders_df['creationDate'].dt.date
+        orders_df['year_month'] = orders_df['creationDate'].dt.to_period('M').astype(str)
+        
+        # Apply date filtering if specified
+        if date_start or date_end:
+            def parse_date(date_str):
+                if date_str is None:
+                    return None
+                date_formats = ['%Y-%m-%d', '%m/%d/%Y', '%d/%m/%Y']
+                for fmt in date_formats:
+                    try:
+                        return pd.to_datetime(date_str, format=fmt).date()
+                    except:
+                        continue
+                return pd.to_datetime(date_str).date()
+            
+            start_parsed = parse_date(date_start) if date_start else orders_df['date'].min()
+            end_parsed = parse_date(date_end) if date_end else orders_df['date'].max()
+            
+            orders_df = orders_df[(orders_df['date'] >= start_parsed) & (orders_df['date'] <= end_parsed)]
+            
+            if orders_df.empty:
+                return {"error": f"No orders found in date range {start_parsed} to {end_parsed}"}
+        
+        # Filter by specific products if requested
+        if product_references:
+            orders_df = orders_df[orders_df['Reference'].isin(product_references)]
+            if orders_df.empty:
+                return {"error": f"No orders found for specified product references: {product_references}"}
+        
+        # Product performance analysis
+        product_stats = orders_df.groupby('Reference').agg({
+            'quantity (units)': ['sum', 'mean', 'count'],
+            'orderNumber': 'nunique',
+            'creationDate': ['min', 'max'],
+            'codCustomer': 'nunique'
+        }).round(2)
+        
+        product_stats.columns = ['total_quantity', 'avg_quantity_per_order', 'total_order_lines', 
+                               'unique_orders', 'first_sale_date', 'last_sale_date', 'unique_customers']
+        
+        # Calculate product velocity metrics
+        product_stats['days_in_market'] = (product_stats['last_sale_date'] - product_stats['first_sale_date']).dt.days + 1
+        product_stats['daily_velocity'] = (product_stats['total_quantity'] / product_stats['days_in_market']).round(3)
+        product_stats['order_frequency'] = (product_stats['total_order_lines'] / product_stats['days_in_market']).round(3)
+        product_stats['customer_reach'] = product_stats['unique_customers']
+        
+        # Product lifecycle classification
+        def classify_lifecycle(row):
+            days = row['days_in_market']
+            velocity = row['daily_velocity']
+            recent_activity = (orders_df['date'].max() - row['last_sale_date']).days
+            
+            if days < 30:
+                return "introduction"
+            elif velocity > product_stats['daily_velocity'].quantile(0.75) and recent_activity < 30:
+                return "growth"
+            elif velocity < product_stats['daily_velocity'].quantile(0.25) or recent_activity > 60:
+                return "decline"
+            else:
+                return "maturity"
+        
+        product_stats['lifecycle_stage'] = product_stats.apply(classify_lifecycle, axis=1)
+        
+        # Monthly trend analysis for top products
+        top_products = product_stats.nlargest(10, 'total_quantity').index.tolist()
+        monthly_trends = {}
+        
+        for product in top_products[:5]:  # Top 5 for detailed trends
+            product_monthly = orders_df[orders_df['Reference'] == product].groupby('year_month')['quantity (units)'].sum()
+            monthly_trends[product] = {
+                'monthly_data': product_monthly.to_dict(),
+                'trend_direction': 'stable'
+            }
+            
+            # Calculate trend direction
+            if len(product_monthly) >= 3:
+                first_third = product_monthly.iloc[:len(product_monthly)//3].mean()
+                last_third = product_monthly.iloc[-len(product_monthly)//3:].mean()
+                if last_third > first_third * 1.2:
+                    monthly_trends[product]['trend_direction'] = 'increasing'
+                elif last_third < first_third * 0.8:
+                    monthly_trends[product]['trend_direction'] = 'decreasing'
+        
+        # Size analysis if requested
+        size_analysis = {}
+        if include_sizes:
+            size_stats = orders_df.groupby(['Reference', 'Size (US)'])['quantity (units)'].sum().reset_index()
+            popular_sizes_per_product = {}
+            
+            for product in top_products[:10]:
+                product_sizes = size_stats[size_stats['Reference'] == product].nlargest(3, 'quantity (units)')
+                if not product_sizes.empty:
+                    popular_sizes_per_product[product] = product_sizes[['Size (US)', 'quantity (units)']].to_dict('records')
+            
+            # Overall size distribution
+            overall_size_dist = orders_df.groupby('Size (US)')['quantity (units)'].sum().nlargest(10)
+            size_analysis = {
+                'popular_sizes_per_product': popular_sizes_per_product,
+                'overall_popular_sizes': overall_size_dist.to_dict()
+            }
+        
+        # Performance ranking
+        top_by_quantity = product_stats.nlargest(15, 'total_quantity')[
+            ['total_quantity', 'unique_customers', 'daily_velocity', 'lifecycle_stage']
+        ].reset_index()
+        
+        top_by_velocity = product_stats.nlargest(15, 'daily_velocity')[
+            ['total_quantity', 'daily_velocity', 'unique_customers', 'lifecycle_stage']
+        ].reset_index()
+        
+        # Lifecycle distribution
+        lifecycle_dist = product_stats['lifecycle_stage'].value_counts().to_dict()
+        
+        # Product correlation analysis (simplified)
+        # Find products often ordered together
+        order_products = orders_df.groupby('orderNumber')['Reference'].apply(list).reset_index()
+        frequently_together = {}
+        
+        for product in top_products[:5]:
+            related_products = {}
+            product_orders = order_products[order_products['Reference'].apply(lambda x: product in x)]
+            
+            for order_refs in product_orders['Reference']:
+                for other_product in order_refs:
+                    if other_product != product:
+                        related_products[other_product] = related_products.get(other_product, 0) + 1
+            
+            if related_products:
+                top_related = sorted(related_products.items(), key=lambda x: x[1], reverse=True)[:3]
+                frequently_together[product] = [{'product': p, 'co_occurrence_count': c} for p, c in top_related]
+        
+        return {
+            "analysis_complete": True,
+            "analysis_parameters": {
+                "date_range": f"{orders_df['date'].min()} to {orders_df['date'].max()}",
+                "products_analyzed": len(product_stats),
+                "specific_products_filter": product_references if product_references else "All products",
+                "include_sizes": include_sizes
+            },
+            "summary_statistics": {
+                "total_products": len(product_stats),
+                "total_quantity_sold": int(product_stats['total_quantity'].sum()),
+                "avg_product_velocity": round(product_stats['daily_velocity'].mean(), 3),
+                "most_popular_product": product_stats['total_quantity'].idxmax(),
+                "fastest_moving_product": product_stats['daily_velocity'].idxmax()
+            },
+            "performance_ranking": {
+                "top_products_by_quantity": top_by_quantity.to_dict('records'),
+                "top_products_by_velocity": top_by_velocity.to_dict('records')
+            },
+            "lifecycle_analysis": {
+                "lifecycle_distribution": lifecycle_dist,
+                "introduction_stage_products": len(product_stats[product_stats['lifecycle_stage'] == 'introduction']),
+                "growth_stage_products": len(product_stats[product_stats['lifecycle_stage'] == 'growth']),
+                "maturity_stage_products": len(product_stats[product_stats['lifecycle_stage'] == 'maturity']),
+                "decline_stage_products": len(product_stats[product_stats['lifecycle_stage'] == 'decline'])
+            },
+            "monthly_trends": monthly_trends,
+            "size_analysis": size_analysis if include_sizes else {},
+            "product_correlation": frequently_together,
+            "insights": [
+                f"Analyzed {len(product_stats)} products across {len(orders_df)} order lines",
+                f"Top product '{product_stats['total_quantity'].idxmax()}' sold {product_stats['total_quantity'].max()} units",
+                f"Fastest moving product '{product_stats['daily_velocity'].idxmax()}' averages {product_stats['daily_velocity'].max():.2f} units/day",
+                f"Lifecycle distribution: {lifecycle_dist.get('growth', 0)} growing, {lifecycle_dist.get('maturity', 0)} mature, {lifecycle_dist.get('decline', 0)} declining",
+                f"Average product reaches {product_stats['unique_customers'].mean():.1f} unique customers",
+                f"Product velocity ranges from {product_stats['daily_velocity'].min():.3f} to {product_stats['daily_velocity'].max():.3f} units/day"
+            ]
+        }
+        
+    except Exception as e:
+        return {"error": f"Failed to analyze product sales trends: {str(e)}"}

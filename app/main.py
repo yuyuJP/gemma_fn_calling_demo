@@ -18,7 +18,8 @@ from tools import (
     load_customer_orders,
     analyze_picking_distances,
     analyze_sales_trends_tool,
-    analyze_customer_behavior_tool
+    analyze_customer_behavior_tool,
+    analyze_product_sales_trends_tool
 )
 
 mcp = FastMCP("WarehouseAnalysis")
@@ -103,6 +104,27 @@ def analyze_customer_behavior(data_dir: str = "data", date_start: str = None,
         min_orders: Minimum orders threshold for active customers (default: 1)
     """
     result = analyze_customer_behavior_tool(data_dir, date_start, date_end, customer_segment, min_orders)
+    return str(result)
+
+@mcp.tool()
+def analyze_product_sales_trends(data_dir: str = "data", date_start: str = None,
+                               date_end: str = None, product_references: str = None,
+                               include_sizes: bool = True) -> str:
+    """Analyze product-specific sales performance and trends over time.
+    
+    Args:
+        data_dir: Directory containing CSV files (default: "data")
+        date_start: Start date for analysis (YYYY-MM-DD format, optional)
+        date_end: End date for analysis (YYYY-MM-DD format, optional)
+        product_references: Comma-separated product references to analyze (optional)
+        include_sizes: Include size-based analysis in results (default: True)
+    """
+    # Parse product references if provided
+    product_list = None
+    if product_references:
+        product_list = [ref.strip() for ref in product_references.split(',')]
+    
+    result = analyze_product_sales_trends_tool(data_dir, date_start, date_end, product_list, include_sizes)
     return str(result)
 
 if __name__ == "__main__":
