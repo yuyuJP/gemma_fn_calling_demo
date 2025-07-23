@@ -412,11 +412,11 @@ def analyze_product_demand(data_dir: str = "data", start_date: Optional[str] = N
         return {"error": f"Failed to analyze product demand: {str(e)}"}
 
 
-def analyze_sales_trends_tool(data_dir: str = "data", date_start: Optional[str] = None, 
-                             date_end: Optional[str] = None, granularity: str = "daily", 
-                             metric: str = "quantity") -> Dict[str, Any]:
+def analyze_business_sales_trends_tool(data_dir: str = "data", date_start: Optional[str] = None, 
+                                     date_end: Optional[str] = None, granularity: str = "daily", 
+                                     metric: str = "quantity") -> Dict[str, Any]:
     """
-    Analyze sales trends over time with temporal patterns and growth analysis.
+    Analyze business-wide sales trends over time with temporal patterns and growth analysis.
     
     Args:
         data_dir: Directory containing CSV files (default: "data")
@@ -426,7 +426,7 @@ def analyze_sales_trends_tool(data_dir: str = "data", date_start: Optional[str] 
         metric: Analysis metric ("quantity", "orders", "unique_products")
     
     Returns:
-        Dictionary with trend analysis results including temporal patterns and growth rates
+        Dictionary with business-wide trend analysis results including temporal patterns and growth rates
     """
     try:
         csv_file = os.path.join(data_dir, "Customer_Order.csv")
@@ -538,21 +538,22 @@ def analyze_sales_trends_tool(data_dir: str = "data", date_start: Optional[str] 
         return {"error": f"Failed to analyze sales trends: {str(e)}"}
 
 
-def analyze_customer_behavior_tool(data_dir: str = "data", date_start: Optional[str] = None,
-                                 date_end: Optional[str] = None, customer_segment: str = "all",
-                                 min_orders: int = 1) -> Dict[str, Any]:
+def get_top_customers_tool(data_dir: str = "data", date_start: Optional[str] = None,
+                          date_end: Optional[str] = None, ranking_by: str = "quantity",
+                          top_count: int = 20, min_orders: int = 1) -> Dict[str, Any]:
     """
-    Analyze customer purchasing patterns and loyalty behavior.
+    Get top customers ranked by different metrics with detailed customer information.
     
     Args:
         data_dir: Directory containing CSV files (default: "data")
         date_start: Start date for analysis (YYYY-MM-DD format, optional)
         date_end: End date for analysis (YYYY-MM-DD format, optional)
-        customer_segment: Customer segment to analyze ("all", "top_customers", "new_customers")
+        ranking_by: Ranking metric ("quantity", "orders", "frequency", "products")
+        top_count: Number of top customers to return (default: 20)
         min_orders: Minimum orders threshold for active customers (default: 1)
     
     Returns:
-        Dictionary with customer behavior analysis including segmentation and loyalty metrics
+        Dictionary with top customer rankings and basic metrics
     """
     try:
         csv_file = os.path.join(data_dir, "Customer_Order.csv")
@@ -605,6 +606,151 @@ def analyze_customer_behavior_tool(data_dir: str = "data", date_start: Optional[
         # Filter by minimum orders threshold
         active_customers = customer_stats[customer_stats['total_orders'] >= min_orders]
         
+        # Rank customers based on selected metric
+        if ranking_by == "quantity":
+            top_customers = active_customers.nlargest(top_count, 'total_quantity')
+            sort_column = 'total_quantity'
+        elif ranking_by == "orders":
+            top_customers = active_customers.nlargest(top_count, 'total_orders')
+            sort_column = 'total_orders'
+        elif ranking_by == "frequency":
+            top_customers = active_customers.nlargest(top_count, 'order_frequency')
+            sort_column = 'order_frequency'
+        elif ranking_by == "products":
+            top_customers = active_customers.nlargest(top_count, 'unique_products')
+            sort_column = 'unique_products'
+        else:
+            return {"error": "ranking_by must be 'quantity', 'orders', 'frequency', or 'products'"}
+        
+        # Prepare customer list with rankings
+        top_customers_list = []
+        for rank, (customer_id, customer_data) in enumerate(top_customers.iterrows(), 1):
+            top_customers_list.append({
+                "rank": rank,
+                "customer_id": customer_id,
+                "total_quantity": int(customer_data['total_quantity']),
+                "total_orders": int(customer_data['total_orders']),
+                "unique_products": int(customer_data['unique_products']),
+                "avg_quantity_per_order": float(customer_data['avg_quantity_per_order']),
+                "order_frequency": float(customer_data['order_frequency']),
+                "days_active": int(customer_data['days_active']),
+                "first_order": str(customer_data['first_order_date'].date()),
+                "last_order": str(customer_data['last_order_date'].date())
+            })
+        
+        # Calculate summary statistics
+        total_customers = len(active_customers)
+        top_customer_contribution = {
+            "quantity_share": (top_customers['total_quantity'].sum() / active_customers['total_quantity'].sum() * 100).round(2),
+            "orders_share": (top_customers['total_orders'].sum() / active_customers['total_orders'].sum() * 100).round(2)
+        }
+        
+        return {
+            "analysis_complete": True,
+            "analysis_parameters": {
+                "ranking_by": ranking_by,
+                "top_count": top_count,
+                "min_orders_threshold": min_orders,
+                "date_range": f"{orders_df['date'].min()} to {orders_df['date'].max()}",
+                "total_active_customers": total_customers
+            },
+            "top_customers": top_customers_list,
+            "summary_statistics": {
+                "total_active_customers": total_customers,
+                f"top_{top_count}_quantity_share": top_customer_contribution["quantity_share"],
+                f"top_{top_count}_orders_share": top_customer_contribution["orders_share"],
+                "highest_value_customer": {
+                    "customer_id": top_customers_list[0]["customer_id"] if top_customers_list else None,
+                    sort_column: top_customers_list[0][sort_column] if top_customers_list else 0
+                }
+            },
+            "insights": [
+                f"Top {len(top_customers_list)} customers ranked by {ranking_by}",
+                f"These customers account for {top_customer_contribution['quantity_share']}% of total quantity",
+                f"Top customer: {top_customers_list[0]['customer_id']} with {top_customers_list[0][sort_column]} {ranking_by}" if top_customers_list else "No customers found",
+                f"Average {ranking_by} among top customers: {top_customers[sort_column].mean():.2f}" if len(top_customers) > 0 else "No data available"
+            ]
+        }
+        
+    except Exception as e:
+        return {"error": f"Failed to get top customers: {str(e)}"}
+
+
+def analyze_customer_segments_tool(data_dir: str = "data", date_start: Optional[str] = None,
+                                 date_end: Optional[str] = None, customer_segment: str = "all",
+                                 customer_references: Optional[List[str]] = None,
+                                 min_orders: int = 1) -> Dict[str, Any]:
+    """
+    Analyze customer segmentation patterns, loyalty behavior, and purchasing habits.
+    
+    Args:
+        data_dir: Directory containing CSV files (default: "data")
+        date_start: Start date for analysis (YYYY-MM-DD format, optional)
+        date_end: End date for analysis (YYYY-MM-DD format, optional)
+        customer_segment: Customer segment to analyze ("all", "top_customers", "new_customers")
+        customer_references: Specific customer IDs to analyze (optional, analyzes all if None)
+        min_orders: Minimum orders threshold for active customers (default: 1)
+    
+    Returns:
+        Dictionary with customer segmentation analysis, loyalty metrics, and behavioral patterns
+    """
+    try:
+        csv_file = os.path.join(data_dir, "Customer_Order.csv")
+        if not os.path.exists(csv_file):
+            return {"error": f"Customer_Order.csv not found in {data_dir}"}
+        
+        # Load customer orders data
+        orders_df = pd.read_csv(csv_file, sep=';', encoding='utf-8-sig')
+        
+        # Parse creation date
+        orders_df['creationDate'] = pd.to_datetime(orders_df['creationDate'], format='%d/%m/%Y %H:%M')
+        orders_df['date'] = orders_df['creationDate'].dt.date
+        
+        # Apply date filtering if specified
+        if date_start or date_end:
+            def parse_date(date_str):
+                if date_str is None:
+                    return None
+                date_formats = ['%Y-%m-%d', '%m/%d/%Y', '%d/%m/%Y']
+                for fmt in date_formats:
+                    try:
+                        return pd.to_datetime(date_str, format=fmt).date()
+                    except:
+                        continue
+                return pd.to_datetime(date_str).date()
+            
+            start_parsed = parse_date(date_start) if date_start else orders_df['date'].min()
+            end_parsed = parse_date(date_end) if date_end else orders_df['date'].max()
+            
+            orders_df = orders_df[(orders_df['date'] >= start_parsed) & (orders_df['date'] <= end_parsed)]
+            
+            if orders_df.empty:
+                return {"error": f"No orders found in date range {start_parsed} to {end_parsed}"}
+        
+        # Filter by specific customers if requested
+        if customer_references:
+            orders_df = orders_df[orders_df['codCustomer'].isin(customer_references)]
+            if orders_df.empty:
+                return {"error": f"No orders found for specified customer references: {customer_references}"}
+        
+        # Customer-level analysis
+        customer_stats = orders_df.groupby('codCustomer').agg({
+            'orderNumber': 'nunique',
+            'quantity (units)': 'sum',
+            'Reference': 'nunique',
+            'creationDate': ['min', 'max']
+        }).round(2)
+        
+        customer_stats.columns = ['total_orders', 'total_quantity', 'unique_products', 'first_order_date', 'last_order_date']
+        
+        # Calculate customer metrics
+        customer_stats['avg_quantity_per_order'] = (customer_stats['total_quantity'] / customer_stats['total_orders']).round(2)
+        customer_stats['days_active'] = (customer_stats['last_order_date'] - customer_stats['first_order_date']).dt.days
+        customer_stats['order_frequency'] = (customer_stats['total_orders'] / (customer_stats['days_active'] + 1)).round(4)
+        
+        # Filter by minimum orders threshold
+        active_customers = customer_stats[customer_stats['total_orders'] >= min_orders]
+        
         # Customer segmentation
         if customer_segment == "top_customers":
             # Top 10% by total quantity
@@ -621,9 +767,32 @@ def analyze_customer_behavior_tool(data_dir: str = "data", date_start: Optional[
         avg_orders_per_customer = segment_customers['total_orders'].mean()
         avg_quantity_per_customer = segment_customers['total_quantity'].mean()
         
-        # Top customers by different metrics
-        top_by_orders = segment_customers.nlargest(10, 'total_orders')[['total_orders', 'total_quantity']].reset_index()
-        top_by_quantity = segment_customers.nlargest(10, 'total_quantity')[['total_orders', 'total_quantity']].reset_index()
+        # Customer loyalty classification
+        loyalty_classification = {}
+        for customer_id, customer_data in segment_customers.iterrows():
+            orders = customer_data['total_orders']
+            frequency = customer_data['order_frequency']
+            days_active = customer_data['days_active']
+            
+            if orders >= 10 and frequency > 0.1:  # High orders and high frequency
+                loyalty_classification[customer_id] = "Champion"
+            elif orders >= 5 and frequency > 0.05:  # Medium-high orders and frequency
+                loyalty_classification[customer_id] = "Loyal"
+            elif orders >= 3 and days_active > 30:  # Some repeat purchases over time
+                loyalty_classification[customer_id] = "Regular"
+            elif orders >= 2:  # At least one repeat purchase
+                loyalty_classification[customer_id] = "Occasional"
+            else:  # Single purchase
+                loyalty_classification[customer_id] = "One-time"
+        
+        # Count customers by loyalty level
+        loyalty_counts = {
+            "Champion": sum(1 for v in loyalty_classification.values() if v == "Champion"),
+            "Loyal": sum(1 for v in loyalty_classification.values() if v == "Loyal"),
+            "Regular": sum(1 for v in loyalty_classification.values() if v == "Regular"),
+            "Occasional": sum(1 for v in loyalty_classification.values() if v == "Occasional"),
+            "One-time": sum(1 for v in loyalty_classification.values() if v == "One-time")
+        }
         
         # Order size distribution
         order_sizes = orders_df.groupby('orderNumber')['quantity (units)'].sum()
@@ -642,35 +811,59 @@ def analyze_customer_behavior_tool(data_dir: str = "data", date_start: Optional[
             "frequent_10_plus": len(segment_customers[segment_customers['total_orders'] > 10])
         }
         
+        # Customer value distribution
+        value_percentiles = {
+            "p25_quantity": segment_customers['total_quantity'].quantile(0.25),
+            "p50_quantity": segment_customers['total_quantity'].quantile(0.5),
+            "p75_quantity": segment_customers['total_quantity'].quantile(0.75),
+            "p90_quantity": segment_customers['total_quantity'].quantile(0.9)
+        }
+        
+        # Retention analysis (customers with multiple orders)
+        retention_metrics = {
+            "retention_rate": (len(segment_customers[segment_customers['total_orders'] > 1]) / total_customers * 100).round(2) if total_customers > 0 else 0,
+            "avg_customer_lifespan_days": segment_customers['days_active'].mean().round(1),
+            "repeat_purchase_rate": (len(segment_customers[segment_customers['total_orders'] >= 2]) / total_customers * 100).round(2) if total_customers > 0 else 0
+        }
+        
         return {
             "analysis_complete": True,
             "analysis_parameters": {
                 "customer_segment": customer_segment,
+                "specific_customers_filter": customer_references if customer_references else "All customers",
                 "min_orders_threshold": min_orders,
                 "date_range": f"{orders_df['date'].min()} to {orders_df['date'].max()}",
                 "total_customers_analyzed": total_customers
             },
-            "customer_summary": {
-                "total_active_customers": total_customers,
+            "segment_summary": {
+                "total_customers_in_segment": total_customers,
                 "avg_orders_per_customer": round(avg_orders_per_customer, 2),
                 "avg_quantity_per_customer": round(avg_quantity_per_customer, 2),
-                "avg_order_frequency": round(segment_customers['order_frequency'].mean(), 4)
+                "avg_order_frequency": round(segment_customers['order_frequency'].mean(), 4),
+                "avg_unique_products_per_customer": round(segment_customers['unique_products'].mean(), 1)
             },
-            "top_customers_by_orders": top_by_orders.to_dict('records'),
-            "top_customers_by_quantity": top_by_quantity.to_dict('records'),
-            "order_size_distribution": size_distribution,
-            "purchase_frequency_segments": frequency_segments,
+            "loyalty_segmentation": {
+                "loyalty_distribution": loyalty_counts,
+                "loyalty_percentages": {k: round(v/total_customers*100, 1) for k, v in loyalty_counts.items()} if total_customers > 0 else {}
+            },
+            "behavioral_patterns": {
+                "order_size_distribution": size_distribution,
+                "purchase_frequency_segments": frequency_segments,
+                "value_distribution_percentiles": {k: round(v, 2) for k, v in value_percentiles.items()},
+                "retention_metrics": retention_metrics
+            },
             "insights": [
                 f"Analyzed {total_customers} customers in '{customer_segment}' segment",
-                f"Average customer places {avg_orders_per_customer:.1f} orders",
-                f"Most loyal customer has {segment_customers['total_orders'].max()} orders",
-                f"{frequency_segments['single_purchase']} customers ({frequency_segments['single_purchase']/total_customers*100:.1f}%) made only one purchase",
-                f"Top customer ordered {segment_customers['total_quantity'].max()} total units"
+                f"Loyalty distribution: {loyalty_counts['Champion']} Champions, {loyalty_counts['Loyal']} Loyal, {loyalty_counts['One-time']} One-time customers",
+                f"Customer retention rate: {retention_metrics['retention_rate']}% of customers made repeat purchases",
+                f"{frequency_segments['single_purchase']} customers ({frequency_segments['single_purchase']/total_customers*100:.1f}%) made only one purchase" if total_customers > 0 else "No customers in segment",
+                f"Average customer lifespan: {retention_metrics['avg_customer_lifespan_days']} days",
+                f"Repeat purchase rate: {retention_metrics['repeat_purchase_rate']}% of customers purchased again"
             ]
         }
         
     except Exception as e:
-        return {"error": f"Failed to analyze customer behavior: {str(e)}"}
+        return {"error": f"Failed to analyze customer segments: {str(e)}"}
 
 
 def analyze_product_sales_trends_tool(data_dir: str = "data", date_start: Optional[str] = None,
@@ -750,7 +943,7 @@ def analyze_product_sales_trends_tool(data_dir: str = "data", date_start: Option
         def classify_lifecycle(row):
             days = row['days_in_market']
             velocity = row['daily_velocity']
-            recent_activity = (orders_df['date'].max() - row['last_sale_date']).days
+            recent_activity = (orders_df['date'].max() - row['last_sale_date'].date()).days
             
             if days < 30:
                 return "introduction"

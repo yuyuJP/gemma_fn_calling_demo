@@ -59,6 +59,29 @@ When you need to use a tool, respond with a JSON object in this format:
 
 After calling a tool, use the result to provide a helpful response to the user.
 If you don't need to use any tools, respond normally without the JSON format.
+
+TOOL SELECTION:
+- "most popular", "top products", "bestsellers" → get_most_popular_products
+- "business sales trends", "growth patterns", "overall trends" → analyze_business_sales_trends  
+- "advanced product analytics", "product lifecycle" → analyze_product_sales_trends
+- "top customers", "best customers", "customer ranking" → get_top_customers
+- "customer behavior", "loyalty analysis", "customer segments" → analyze_customer_segments
+
+DATE RESOLUTION REQUIREMENT:
+⏰ Call get_current_time_tool() FIRST ONLY for RELATIVE time periods (not specific dates):
+- RELATIVE (call get_current_time_tool): "past month", "last week", "recent trends", "this quarter", "over the past X days", "lately", "recently"  
+- SPECIFIC (do NOT call get_current_time_tool): "September 2023", "October 2023", "January 15th", "Q1 2023", "2023-10-01"
+
+🔧 IMPORTANT: get_current_time_tool() only accepts timezone parameter and returns current time.
+   After getting current time, YOU must calculate the actual date range for relative periods.
+   Example: For "past month", call get_current_time_tool(), then calculate start_date and end_date yourself.
+
+TOOL-SPECIFIC NOTES:
+- For get_most_popular_products: Use for "top 5", "most popular", "bestsellers" - returns ranked list
+- For analyze_product_sales_trends: Set product_references to null for all products analysis, or specific codes like "8N10W9,WRRW1W,I1KDJ0"
+- For get_top_customers: Use ranking_by parameter ("quantity", "orders", "frequency", "products") and set top_count for number of customers
+- For analyze_customer_segments: Set customer_references to null for all customers analysis, or specific IDs like "CUST001,CUST002,CUST003"
+- NEVER use descriptive text like "top_5_customers" in customer_references - use null for all customers or specific IDs only
 """
     
     async def call_tool(self, tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
@@ -111,10 +134,14 @@ If you don't need to use any tools, respond normally without the JSON format.
                     return assistant_msg
                 
                 # Execute the tool call
+                print(f"🔧 TOOL CALL: {tool_call['name']} with arguments: {tool_call['arguments']}")
                 tool_result = await self.call_tool(
                     tool_call["name"], 
                     tool_call["arguments"]
                 )
+                print(f"🔧 TOOL RESULT: {'✅ Success' if tool_result.get('success') else '❌ Failed'}")
+                if not tool_result.get('success'):
+                    print(f"🔧 ERROR: {tool_result.get('error', 'Unknown error')}")
                 
                 # Add the interaction to history
                 history.extend([
@@ -139,6 +166,21 @@ If you don't need to use any tools, respond normally without the JSON format.
         try:
             # Look for JSON with tool_call structure
             if '{"tool_call":' in text:
+                # Try to parse the entire text as JSON first
+                try:
+                    # Clean the text and fix Python-style booleans/None to JSON style
+                    clean_text = text.strip().rstrip('\n').rstrip()
+                    # Replace Python-style values with JSON-style values
+                    clean_text = clean_text.replace('True', 'true').replace('False', 'false').replace('None', 'null')
+                    
+                    parsed = json.loads(clean_text)
+                    if "tool_call" in parsed:
+                        return parsed["tool_call"]
+                except json.JSONDecodeError as e:
+                    # Fall back to the original method
+                    pass
+                
+                # Original method with brace counting
                 start = text.find('{"tool_call":')
                 end = text.find('}', start)
                 if end != -1:
