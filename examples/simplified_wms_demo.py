@@ -34,12 +34,12 @@ async def test_natural_questions():
         for name, info in tools.items():
             print(f"   - {name}: {info['description']}")
         
-        # Natural questions
+        # Natural questions to test date handling
         questions = [
-            "Who walked the longest distance in the warehouse on September 1st, 2023?",
-            "Which products were most popular in September 2023?",
-            "Show me the warehouse layout.",
-            "What time is it in Tokyo?",
+            # "List the top 3 customers and analyze their behavior."
+            # "Which products were most popular in September 2023?",
+            # "How are sales trending through April and September 2023?",
+            "List 5 most popular items on September 2023."
         ]
         
         print(f"\n🤔 Testing natural language questions...")
